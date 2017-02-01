@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.23107.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "JyMon", "JyMon\JyMon.vcxproj", "{CE74F8F0-92BF-4A9C-8FDD-FB04775B429B}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "JyMonKernel", "JyMon\JyMon.vcxproj", "{CE74F8F0-92BF-4A9C-8FDD-FB04775B429B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "JyMonUser", "JyMonUser\JyMonUser.vcxproj", "{8C6418CE-341B-4E53-A3AA-97AB8513827F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,6 +43,18 @@ Global
 		{CE74F8F0-92BF-4A9C-8FDD-FB04775B429B}.Release|x86.ActiveCfg = Release|Win32
 		{CE74F8F0-92BF-4A9C-8FDD-FB04775B429B}.Release|x86.Build.0 = Release|Win32
 		{CE74F8F0-92BF-4A9C-8FDD-FB04775B429B}.Release|x86.Deploy.0 = Release|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|ARM.ActiveCfg = Debug|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|ARM64.ActiveCfg = Debug|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|x64.ActiveCfg = Debug|x64
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|x64.Build.0 = Debug|x64
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|x86.ActiveCfg = Debug|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Debug|x86.Build.0 = Debug|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|ARM.ActiveCfg = Release|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|ARM64.ActiveCfg = Release|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|x64.ActiveCfg = Release|x64
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|x64.Build.0 = Release|x64
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|x86.ActiveCfg = Release|Win32
+		{8C6418CE-341B-4E53-A3AA-97AB8513827F}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

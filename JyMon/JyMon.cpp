@@ -59,12 +59,7 @@ typedef struct _JYMON_STREAMHANDLE_CONTEXT
 typedef struct _JYMON_NOTIFICATION
 {
 
-	//UCHAR ProcessName[READ_BUFFER_SIZE];
-	//	ULONG ProcessId;
 	UCHAR MajorFunction;
-	ULONG BytesToScan;
-	ULONG Reserved;
-	ULONG Contents[READ_BUFFER_SIZE];
 
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
 
@@ -153,178 +148,6 @@ JyMonGetSectorSize(
 	return Status;
 }
 
-NTSTATUS
-JyMonNotifyEventRow(
-	_Inout_ PFLT_CALLBACK_DATA CallbackData,
-	_In_ PCFLT_RELATED_OBJECTS FltObjects
-	)
-{
-	NTSTATUS Status = STATUS_SUCCESS;
-	PJYMON_NOTIFICATION Notification = NULL;
-	JYMON_REPLY Reply;
-	PVOID Buffer = NULL;
-	ULONG BytesRead;
-	ULONG ReplyLength;
-	LARGE_INTEGER Offset;
-	PFLT_FILE_NAME_INFORMATION FileNameInformation;
-	PFLT_IO_PARAMETER_BLOCK Iopb = CallbackData->Iopb;
-
-	KIRQL CurrentIrql = KeGetCurrentIrql();
-	if (APC_LEVEL < CurrentIrql)
-	{
-		Status = STATUS_UNSUCCESSFUL;
-		return Status;
-	}
-
-	if (NULL == FltObjects->FileObject ||
-		NULL == CallbackData ||
-		0 == FltObjects->FileObject->FileName.Length ||
-		0 == FltObjects->FileObject->FileName.MaximumLength ||
-		NULL == FltObjects->FileObject->FileName.Buffer)
-	{
-		Status = STATUS_UNSUCCESSFUL;
-		return Status;
-	}
-
-	//
-	// The TopLevelIrp parameter that you can retrieve by calling IoGetTopLevelIrp 
-	// indicates where the present call originated.
-	// If it has originated from a user space call, then there is no TopLevelIrp 
-	// component and this value is NULL.
-	// If it has originated from the cache, then the top level Irp is actually 
-	// a constant FSRTL_CACHE_TOP_LEVEL_IRP.This can happen on the write path, when the Cache is actually doing a WriteBehind for a modified file.
-	// If it has originated from the modified page writer in the Cache, then 
-	// the value is FSRTL_MOD_WRITE_TOP_LEVEL_IRP.
-	// If the file system itself is the top level component as in a recursive call (got this a couple of times when you try to open a file with 
-	// notepad), the value is FSRTL_FSP_TOP_LEVEL_IRP.
-	// If it is the result of a FAST CALL(got this once when I tried to open a log
-	// file with Wordpad), the value is FSRTL_FAST_IO_TOP_LEVEL_IRP
-	//
-	if (NULL == IoGetTopLevelIrp())
-	{
-		Status = FltGetFileNameInformation(CallbackData,
-			FLT_FILE_NAME_NORMALIZED |
-			FLT_FILE_NAME_QUERY_DEFAULT,
-			&FileNameInformation);
-
-		if (!NT_SUCCESS(Status))
-		{
-			return FLT_POSTOP_FINISHED_PROCESSING;
-		}
-
-		FltParseFileNameInformation(FileNameInformation);
-		__try
-		{
-			Notification->BytesToScan = min(FileNameInformation->Name.Length, READ_BUFFER_SIZE);
-			RtlCopyMemory(&Notification->Contents,
-				FileNameInformation->Name.Buffer,
-				Notification->BytesToScan);
-		}
-		__except (EXCEPTION_EXECUTE_HANDLER)
-		{
-			CallbackData->IoStatus.Status = GetExceptionCode();
-			CallbackData->IoStatus.Information = 0;
-			Status = FLT_PREOP_COMPLETE;
-		}
-
-		FltReleaseFileNameInformation(FileNameInformation);
-	}
-
-	Notification->MajorFunction = Iopb->MajorFunction;
-
-	if (0 >= SectorSize)
-	{
-		Status = JyMonGetSectorSize(FltObjects->Instance, &SectorSize);
-		if (!NT_SUCCESS(Status))
-		{
-			goto CleanupNotifyEventRow;
-		}
-	}
-
-	__try
-	{
-		Buffer = FltAllocatePoolAlignedWithTag(FltObjects->Instance,
-			NonPagedPool,
-			SectorSize,
-			'nacS');
-		if (NULL == Buffer)
-		{
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			__leave;
-		}
-
-		Notification = (PJYMON_NOTIFICATION)ExAllocatePoolWithTag(NonPagedPool,
-			sizeof(JYMON_NOTIFICATION),
-			'nacS');
-		if (NULL == Notification)
-		{
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			__leave;
-		}
-
-		//
-		//  Read the beginning of the file and pass the contents to user mode.
-		//
-
-		Offset.QuadPart = BytesRead = 0;
-		Status = FltReadFile(FltObjects->Instance,
-			FltObjects->FileObject,
-			&Offset,
-			SectorSize,
-			Buffer,
-			FLTFL_IO_OPERATION_NON_CACHED |
-			FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET,
-			&BytesRead,
-			NULL,
-			NULL);
-
-		if (NT_SUCCESS(Status) && (0 != BytesRead))
-		{
-			Notification->BytesToScan = (ULONG)BytesRead;
-
-			//
-			//  Copy only as much as the buffer can hold
-			//
-
-			RtlCopyMemory(&Notification->Contents,
-				Buffer,
-				min(Notification->BytesToScan, READ_BUFFER_SIZE));
-
-			ReplyLength = sizeof(JYMON_REPLY);
-
-			Status = FltSendMessage(JyMonData.FilterHandle,
-				&JyMonData.ClientPort,
-				Notification,
-				sizeof(JYMON_NOTIFICATION),
-				&Reply,
-				&ReplyLength,
-				NULL);
-
-			if (NT_SUCCESS(Status))
-			{
-				DbgPrint("!!! JyMon.sys --- successed on sending message to user-mode.");
-			}
-			else
-			{
-				DbgPrint("!!! scanner.sys --- couldn't send message to user-mode to scan file, status 0x%X\n", Status);
-			}
-		}
-	}
-	__finally
-	{
-		if (NULL != Buffer)
-		{
-			FltFreePoolAlignedWithTag(FltObjects->Instance, Buffer, 'nacS');
-		}
-		if (NULL != Notification)
-		{
-			ExFreePoolWithTag(Notification, 'nacS');
-		}
-	}
-
-CleanupNotifyEventRow:
-	return Status;
-}
 
 /*************************************************************************
 	Prototypes
@@ -550,32 +373,85 @@ DriverEntry(
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("JyMon!DriverEntry: Entered\n"));
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+		"JyMon!DriverEntry: Entered\n");
 
 	//
 	//  Register with FltMgr to tell it our callback routines
 	//
-
 	Status = FltRegisterFilter(DriverObject,
 		&FilterRegistration,
 		&JyMonData.FilterHandle);
-
-	FLT_ASSERT(NT_SUCCESS(Status));
-
-	if (NT_SUCCESS(Status)) 
+	if (!NT_SUCCESS(Status)) 
 	{
-		//
-		//  Start filtering i/o
-		//
+		switch (Status)
+		{
+			
+		case STATUS_INSUFFICIENT_RESOURCES:
+			//
+			// FltRegisterFilter encountered a pool allocation failure. 
+			// This is an error code.
+			//
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+				"JyMon!DriverEntry!FltRegisterFilter: \
+				STATUS_INSUFFICIENT_RESOURCES\n");
+			break;
+
+		case STATUS_INVALID_PARAMETER:
+			//
+			// One of the following :
+			//
+			// ? The Version member of the Registration structure was not set to 
+			// FLT_REGISTRATION_VERSION.
+			//
+			// ? One of the non - NULL name - provider routines in the Registration 
+			// structure was set to an invalid value.The GenerateFileNameCallback,
+			// NormalizeNameComponentCallback, and NormalizeNameComponentExCallback 
+			// members of FLT_REGISTRATION point to the name - provider routines.
+			//
+			// STATUS_INVALID_PARAMETER is an error code. 
+			//
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+				"JyMon!DriverEntry!FltRegisterFilter: \
+				STATUS_INVALID_PARAMETER\n");
+			break;
+
+		case STATUS_FLT_NOT_INITIALIZED:
+			//  
+			// The Filter Manager was not initialized when the filter tried to 
+			// register. Make sure that the Filter Manager is loaded as a driver.
+			// This is an error code.
+			//
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+				"JyMon!DriverEntry!FltRegisterFilter: \
+				STATUS_FLT_NOT_INITIALIZED");
+			break;
+
+		case STATUS_OBJECT_NAME_NOT_FOUND:
+			//
+			// The filter service key is not found in the registry. 
+			// (registered service without your own inf file, in my case.)
+			// 
+			// The filter instance is not registered.
+			//
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+				"JyMon!DriverEntry!FltRegisterFilter: \
+				STATUS_OBJECT_NAME_NOT_FOUND");
+		//	goto __START_FILTERING_IO__;
+			break;
+		}
+	}
+	else
+	{
+	//__START_FILTERING_IO__:
 		Status = FltStartFiltering(JyMonData.FilterHandle);
-		if (!NT_SUCCESS(Status)) 
+		if (!NT_SUCCESS(Status))
 		{
 			FltUnregisterFilter(JyMonData.FilterHandle);
 		}
 	}
 
-	return Status;
+	return Status = STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -684,15 +560,62 @@ JyMonPostCreate(
 	PJYMON_STREAMHANDLE_CONTEXT JyMonContext = NULL;
 	PFLT_FILE_NAME_INFORMATION FileNameInformation;
 	NTSTATUS Status;
+	PJYMON_NOTIFICATION Notification = NULL;
+	LARGE_INTEGER Offset;
+	ULONG ReplyLength = sizeof(JYMON_REPLY);
+	CONST PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(Flags);
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("JyMon!JyMonPostOperation: Entered\n"));
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!JyMonPostOperation: Entered\n");
 
-	
-	JyMonNotifyEventRow(Data, FltObjects);
+	__try
+	{
+		Notification = (PJYMON_NOTIFICATION)FltAllocatePoolAlignedWithTag(FltObjects->Instance,
+			NonPagedPool,
+			sizeof(JYMON_NOTIFICATION),
+			'nacS');
+		if (NULL == Notification)
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!JyMonPostOperation : couldn't allocate memory, line %i\n", 
+				__LINE__);
+			__leave;
+		}
+
+		RtlZeroMemory(Notification, sizeof(JYMON_NOTIFICATION));
+		Notification->MajorFunction = Iopb->MajorFunction;
+
+		Status = STATUS_SUCCESS;
+		Offset.QuadPart = 0;
+
+		Status = FltSendMessage(JyMonData.FilterHandle,
+			&JyMonData.ClientPort,
+			Notification,
+			sizeof(JYMON_NOTIFICATION),
+			Notification,
+			&ReplyLength,
+			NULL);
+		if (STATUS_SUCCESS == Status)
+		{
+			;
+		}
+		else
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!JyMonPostOperation : Couldn't send message to user-mode, status 0x%X\n",
+				Status);
+		}
+	}
+	__finally
+	{
+		if (NULL != Notification)
+		{
+			ExFreePoolWithTag(Notification, 'nacS');
+		}
+	}
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
