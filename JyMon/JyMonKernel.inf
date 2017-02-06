@@ -1,5 +1,5 @@
 ;;;
-;;; JyMon
+;;; Metadata Management File System Filter Driver Sample
 ;;;
 ;;;
 ;;; Copyright (c) 1999 - 2001, Microsoft Corporation
@@ -8,10 +8,10 @@
 [Version]
 Signature   = "$Windows NT$"
 Class       = "ActivityMonitor"                         ;This is determined by the work this filter driver does
-ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ;This value is determined by the Class
+ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
 Provider    = %ProviderString%
 DriverVer   = 06/16/2007,1.0.0.1
-CatalogFile = JyMon.cat
+CatalogFile = JyMonKernel.cat
 
 
 [DestinationDirs]
@@ -37,7 +37,7 @@ AddService          = %ServiceName%,,MiniFilter.Service
 DelFiles   = MiniFilter.DriverFiles
 
 [DefaultUninstall.Services]
-DelService = %ServiceName%,0x200      ;Ensure service is stopped before deleting
+DelService = %ServiceName%,0x200  ;Ensure service is stopped before deleting
 
 ;
 ; Services Section
@@ -49,9 +49,9 @@ Description      = %ServiceDescription%
 ServiceBinary    = %12%\%DriverName%.sys        ;%windir%\system32\drivers\
 Dependencies     = "FltMgr"
 ServiceType      = 2                            ;SERVICE_FILE_SYSTEM_DRIVER
-StartType        = 3                            ;SERVICE_DEMAND_START
+StartType        = 0                            ;SERVICE_BOOT_START
 ErrorControl     = 1                            ;SERVICE_ERROR_NORMAL
-LoadOrderGroup   = "FSFilter Activity Monitor"
+LoadOrderGroup   = "JyMon Activity Monitor"
 AddReg           = MiniFilter.AddRegistry
 
 ;
@@ -59,7 +59,7 @@ AddReg           = MiniFilter.AddRegistry
 ;
 
 [MiniFilter.AddRegistry]
-HKR,,"DebugFlags",0x00010001 ,0x0
+HKR,,"DebugLevel",0x00010001,0x00000001
 HKR,,"SupportedFeatures",0x00010001,0x3
 HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
 HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
@@ -73,7 +73,7 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 %DriverName%.sys
 
 [SourceDisksFiles]
-JyMon.sys = 1,,
+JyMonKernel.sys = 1,,
 
 [SourceDisksNames]
 1 = %DiskId1%,,,
@@ -84,13 +84,13 @@ JyMon.sys = 1,,
 
 [Strings]
 ProviderString          = "TODO-Set-Provider"
-ServiceDescription      = "JyMon Notification Mini-Filter Driver"
+ServiceDescription      = "JyMon File System Filter Driver Sample"
 ServiceName             = "JyMon"
-DriverName              = "JyMon"
+DriverName              = "JyMonKernel"
 DiskId1                 = "JyMon Device Installation Disk"
 
 ;Instances specific information.
-DefaultInstance         = "JyMon Instance"
-Instance1.Name          = "JyMon Instance"
-Instance1.Altitude      = "370150"
-Instance1.Flags         = 0x0              ; Allow all attachments
+DefaultInstance         = "JyMon"
+Instance1.Name          = "JyMon"
+Instance1.Altitude      = "370060"
+Instance1.Flags         = 0x0

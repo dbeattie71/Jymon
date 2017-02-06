@@ -1,18 +1,8 @@
-/*++
-
-Module Name:
-
-	JyMon.c
-
-Abstract:
-
-	This is the main module of the JyMon miniFilter driver.
-
-Environment:
-
-	Kernel mode
-
---*/
+/*
+* @module   JyMon.c
+* @brief    This is the main module of the JyMon miniFilter driver. 
+* @env      Kernel mode
+*/
 
 #include <fltKernel.h>
 #include <dontuse.h>
@@ -20,18 +10,10 @@ Environment:
 
 #pragma prefast(disable:__WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
 
-
-ULONG_PTR OperationStatusCtx = 1;
-
 #define PTDBG_TRACE_ROUTINES            0x00000001
 #define PTDBG_TRACE_OPERATION_STATUS    0x00000002
 
-ULONG gTraceFlags = 0;
-
-#define PT_DBG_PRINT( _dbgLevel, _string )          \
-    (FlagOn(gTraceFlags,(_dbgLevel)) ?              \
-        DbgPrint _string :                          \
-        ((int)0))
+const PWSTR JYMON_PORT_NAME = L"\\JyMonPort";
 
 /*
 * @brief    Structure that contains all the global data structures
@@ -198,7 +180,7 @@ JyMonPostCreate(
 	);
 
 NTSTATUS
-ScannerPortConnect(
+JyMonPortConnect(
 	_In_ PFLT_PORT ClientPort,
 	_In_opt_ PVOID ServerPortCookie,
 	_In_reads_bytes_opt_(SizeOfContext) PVOID ConnectionContext,
@@ -207,7 +189,7 @@ ScannerPortConnect(
 	);
 
 VOID
-ScannerPortDisconnect(
+JyMonPortDisconnect(
 	_In_opt_ PVOID ConnectionCookie
 	);
 
@@ -305,9 +287,8 @@ JyMonInstanceSetup(
 	//
 	//  Don't attach to network volumes.
 	//
-
-	if (VolumeDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM) {
-
+	if (VolumeDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM) 
+	{
 		return STATUS_FLT_DO_NOT_ATTACH;
 	}
 
@@ -341,8 +322,8 @@ JyMonInstanceQueryTeardown(
 
 	PAGED_CODE();
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("JyMon!JyMonInstanceQueryTeardown: Entered\n"));
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!JyMonInstanceQueryTeardown: Entered\n");
 
 	return STATUS_SUCCESS;
 }
@@ -370,23 +351,73 @@ DriverEntry(
 	)
 {
 	NTSTATUS Status;
+	OBJECT_ATTRIBUTES ObjectAttributes;
+	UNICODE_STRING UnicodePortName;
+	PSECURITY_DESCRIPTOR SecurityDescriptor;
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 		"JyMon!DriverEntry: Entered\n");
+
+	//
+	//  Default to NonPagedPoolNx for non paged pool allocations where supported.
+	//
+	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 
 	//
 	//  Register with FltMgr to tell it our callback routines
 	//
 	Status = FltRegisterFilter(DriverObject,
-		&FilterRegistration,
-		&JyMonData.FilterHandle);
+		                       &FilterRegistration,
+		                       &JyMonData.FilterHandle);
+	if (!NT_SUCCESS(Status))
+	{
+		return Status;
+	}
+
+	//
+	//  Create a communication port.
+	//
+	RtlInitUnicodeString(&UnicodePortName, JYMON_PORT_NAME);
+
+	//
+	//  We secure the port so only ADMINs & SYSTEM can acecss it.
+	//
+	Status = FltBuildDefaultSecurityDescriptor(&SecurityDescriptor, 
+		                                       FLT_PORT_ALL_ACCESS);
+	if (NT_SUCCESS(Status))
+	{
+		InitializeObjectAttributes(&ObjectAttributes,
+			                       &UnicodePortName,
+			                       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			                       NULL,
+			                       SecurityDescriptor);
+		Status = FltCreateCommunicationPort(JyMonData.FilterHandle,
+			                                &JyMonData.ServerPort,
+			                                &ObjectAttributes,
+			                                NULL,
+			                                (PFLT_CONNECT_NOTIFY)JyMonPortConnect,
+		                                    (PFLT_DISCONNECT_NOTIFY)JyMonPortDisconnect,
+			                                NULL,
+			                                1);
+		//
+		//  Free the security descriptor in all cases. It is not needed once
+		//  the call to FltCreateCommunicationPort() is made.
+		//
+		FltFreeSecurityDescriptor(SecurityDescriptor);
+
+		if (!NT_SUCCESS(Status))
+		{
+			goto __CLEANUP_FILTERING__;
+		}
+	}
+
+
 	if (!NT_SUCCESS(Status)) 
 	{
 		switch (Status)
 		{
-			
 		case STATUS_INSUFFICIENT_RESOURCES:
 			//
 			// FltRegisterFilter encountered a pool allocation failure. 
@@ -437,55 +468,65 @@ DriverEntry(
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
 				"JyMon!DriverEntry!FltRegisterFilter: \
 				STATUS_OBJECT_NAME_NOT_FOUND");
-		//	goto __START_FILTERING_IO__;
 			break;
 		}
 	}
 	else
 	{
-	//__START_FILTERING_IO__:
 		Status = FltStartFiltering(JyMonData.FilterHandle);
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+			"JyMon!DriverEntry: Trying to start filtering\n");
 		if (!NT_SUCCESS(Status))
 		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry: Unable to start filtering.\n");
 			FltUnregisterFilter(JyMonData.FilterHandle);
 		}
+		else
+		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry: Start filtering\n");
+		}
 	}
+
+__CLEANUP_FILTERING__:
+	FltCloseCommunicationPort(JyMonData.ServerPort);
+	FltUnregisterFilter(JyMonData.FilterHandle);
 
 	return Status = STATUS_SUCCESS;
 }
 
+/*
+* @brief    This is the unload routine for this miniFilter driver. This is called
+*           when the minifilter is about to be unloaded. We can fail this unload
+*           request if this is not a mandatory unload indicated by the Flags
+*           parameter.
+*
+* @param    Indicating if this is a mandatory unload.
+*
+* @return   STATUS_SUCCESS.
+*/
 NTSTATUS
 JyMonUnload(
 	_In_ FLT_FILTER_UNLOAD_FLAGS Flags
 	)
-	/*++
-
-	Routine Description:
-
-		This is the unload routine for this miniFilter driver. This is called
-		when the minifilter is about to be unloaded. We can fail this unload
-		request if this is not a mandatory unload indicated by the Flags
-		parameter.
-
-	Arguments:
-
-		Flags - Indicating if this is a mandatory unload.
-
-	Return Value:
-
-		Returns STATUS_SUCCESS.
-
-	--*/
 {
 	UNREFERENCED_PARAMETER(Flags);
 
 	PAGED_CODE();
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("JyMon!JyMonUnload: Entered\n"));
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!JyMonUnload: Entered\n");
 
-	FltUnregisterFilter(JyMonData.FilterHandle);
-
+	if (JyMonData.ServerPort)
+	{
+		FltCloseCommunicationPort(JyMonData.ServerPort);
+	}
+	if (JyMonData.FilterHandle)
+	{
+		FltUnregisterFilter(JyMonData.FilterHandle);
+	}
+	
 	return STATUS_SUCCESS;
 }
 
@@ -493,45 +534,29 @@ JyMonUnload(
 /*************************************************************************
 	MiniFilter callback routines.
 *************************************************************************/
+/*
+* @brief    This routine is a pre-operation dispatch routine for this miniFilter.
+*           This is non-pageable because it could be called on the paging path.
+*
+* @param    Pointer to the filter callbackData that is passed to us.
+* @param    Pointer to the FLT_RELATED_OBJECTS data structure containing
+*           opaque handles to this filter, instance, its associated volume and
+*           file object.
+* @param    The context for the completion routine for this operation.
+* 
+* @return   The status of the operation.
+*/
 FLT_PREOP_CALLBACK_STATUS
 JyMonPreCreate(
 	_Inout_ PFLT_CALLBACK_DATA Data,
 	_In_ PCFLT_RELATED_OBJECTS FltObjects,
 	_Flt_CompletionContext_Outptr_ PVOID *CompletionContext
 	)
-	/*++
-
-	Routine Description:
-
-		This routine is a pre-operation dispatch routine for this miniFilter.
-
-		This is non-pageable because it could be called on the paging path
-
-	Arguments:
-
-		Data - Pointer to the filter callbackData that is passed to us.
-
-		FltObjects - Pointer to the FLT_RELATED_OBJECTS data structure containing
-			opaque handles to this filter, instance, its associated volume and
-			file object.
-
-		CompletionContext - The context for the completion routine for this
-			operation.
-
-	Return Value:
-
-		The return value is the status of the operation.
-
-	--*/
 {
-	NTSTATUS status;
+	NTSTATUS Status;
 
 	UNREFERENCED_PARAMETER(FltObjects);
 	UNREFERENCED_PARAMETER(CompletionContext);
-
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("JyMon!JyMonPreOperation: Entered\n"));
-
 
 	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
@@ -567,9 +592,9 @@ JyMonPostCreate(
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(Flags);
-
+	
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
-		"JyMon!JyMonPostOperation: Entered\n");
+		"JyMon!JyMonPostOperation\n");
 
 	__try
 	{
@@ -580,7 +605,7 @@ JyMonPostCreate(
 		if (NULL == Notification)
 		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
-				"JyMon!JyMonPostOperation : couldn't allocate memory, line %i\n", 
+				"JyMon!JyMonPostOperation : Couldn't allocate memory, line %i\n", 
 				__LINE__);
 			__leave;
 		}
@@ -605,7 +630,7 @@ JyMonPostCreate(
 		else
 		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
-				"JyMon!JyMonPostOperation : Couldn't send message to user-mode, status 0x%X\n",
+				"JyMon!JyMonPostOperation : Couldn't send message to user-mode, Status 0x%X\n",
 				Status);
 		}
 	}
@@ -618,4 +643,80 @@ JyMonPostCreate(
 	}
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+/*
+* @brief    This is called when user-mode connects to the server port - to establish a
+*           connection.
+* @param    This is the client connection port that will be used to send messages from 
+*           the filter
+* @param    The context associated with this port when the minifilter created this port.
+* @param    Context from entity connecting to this port (most likely your user mode service)
+* @param    Size of ConnectionContext in bytes
+* @param    Context to be passed to the port disconnect routine.
+* @return   STATUS_SUCCESS - to accept the connection
+*/
+NTSTATUS
+JyMonPortConnect(
+	_In_ PFLT_PORT ClientPort,
+	_In_opt_ PVOID ServerPortCookie,
+	_In_reads_bytes_opt_(SizeOfContext) PVOID ConnectionContext,
+	_In_ ULONG SizeOfContext,
+	_Outptr_result_maybenull_ PVOID *ConnectionCookie
+	)
+{
+	PAGED_CODE();
+
+	UNREFERENCED_PARAMETER(ServerPortCookie);
+	UNREFERENCED_PARAMETER(ConnectionContext);
+	UNREFERENCED_PARAMETER(SizeOfContext);
+	UNREFERENCED_PARAMETER(ConnectionCookie = NULL);
+
+	FLT_ASSERT(JyMonData.ClientPort == NULL);
+	FLT_ASSERT(JyMonData.UserProcess == NULL);
+
+	//
+	//  Set the user process and port. In a production filter it may
+	//  be necessary to synchronize access to such fields with port
+	//  lifetime. For instance, while filter manager will synchronize
+	//  FltCloseClientPort with FltSendMessage's reading of the port 
+	//  handle, synchronizing access to the UserProcess would be up to
+	//  the filter.
+	//
+	JyMonData.UserProcess = PsGetCurrentProcess();
+	JyMonData.ClientPort = ClientPort;
+
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!JyMonPortConnect : Connected, Port=0x%P\n", ClientPort);
+
+	return STATUS_SUCCESS;
+}
+
+/*
+* @brief    This is called when the connection is torn-down. We use it to close our
+*           handle to the connection
+* @param    Context from the port connect routine.
+*/
+VOID
+JyMonPortDisconnect(
+	_In_opt_ PVOID ConnectionCookie
+	)
+{
+	UNREFERENCED_PARAMETER(ConnectionCookie);
+
+	PAGED_CODE();
+
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!JyMonPortDisconnect : Disconnected, Port=0x%P\n", JyMonData.ClientPort);
+
+	//
+	//  Close our handle to the connection: note, since we limited max connections to 1,
+	//  another connect will not be allowed until we return from the disconnect routine.
+	//
+	FltCloseClientPort(JyMonData.FilterHandle, &JyMonData.ClientPort);
+
+	//
+	//  Reset the user-process field.
+	//
+	JyMonData.UserProcess = NULL;
 }

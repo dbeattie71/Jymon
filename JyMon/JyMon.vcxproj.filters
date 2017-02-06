@@ -29,7 +29,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="JyMon.inf">
+    <Inf Include="JyMonKernel.inf">
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
