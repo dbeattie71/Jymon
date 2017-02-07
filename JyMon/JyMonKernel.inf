@@ -1,5 +1,5 @@
 ;;;
-;;; Metadata Management File System Filter Driver Sample
+;;; JyMonKernel
 ;;;
 ;;;
 ;;; Copyright (c) 1999 - 2001, Microsoft Corporation
@@ -8,7 +8,7 @@
 [Version]
 Signature   = "$Windows NT$"
 Class       = "ActivityMonitor"                         ;This is determined by the work this filter driver does
-ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
+ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ;This value is determined by the Class
 Provider    = %ProviderString%
 DriverVer   = 06/16/2007,1.0.0.1
 CatalogFile = JyMonKernel.cat
@@ -37,7 +37,7 @@ AddService          = %ServiceName%,,MiniFilter.Service
 DelFiles   = MiniFilter.DriverFiles
 
 [DefaultUninstall.Services]
-DelService = %ServiceName%,0x200  ;Ensure service is stopped before deleting
+DelService = %ServiceName%,0x200      ;Ensure service is stopped before deleting
 
 ;
 ; Services Section
@@ -49,9 +49,9 @@ Description      = %ServiceDescription%
 ServiceBinary    = %12%\%DriverName%.sys        ;%windir%\system32\drivers\
 Dependencies     = "FltMgr"
 ServiceType      = 2                            ;SERVICE_FILE_SYSTEM_DRIVER
-StartType        = 0                            ;SERVICE_BOOT_START
+StartType        = 3                            ;SERVICE_DEMAND_START
 ErrorControl     = 1                            ;SERVICE_ERROR_NORMAL
-LoadOrderGroup   = "JyMon Activity Monitor"
+LoadOrderGroup   = "FSFilter Activity Monitor"
 AddReg           = MiniFilter.AddRegistry
 
 ;
@@ -59,7 +59,7 @@ AddReg           = MiniFilter.AddRegistry
 ;
 
 [MiniFilter.AddRegistry]
-HKR,,"DebugLevel",0x00010001,0x00000001
+HKR,,"DebugFlags",0x00010001 ,0x0
 HKR,,"SupportedFeatures",0x00010001,0x3
 HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
 HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
@@ -84,13 +84,13 @@ JyMonKernel.sys = 1,,
 
 [Strings]
 ProviderString          = "TODO-Set-Provider"
-ServiceDescription      = "JyMon File System Filter Driver Sample"
-ServiceName             = "JyMon"
+ServiceDescription      = "JyMonKernel Mini-Filter Driver"
+ServiceName             = "JyMonKernel"
 DriverName              = "JyMonKernel"
-DiskId1                 = "JyMon Device Installation Disk"
+DiskId1                 = "JyMonKernel Device Installation Disk"
 
 ;Instances specific information.
-DefaultInstance         = "JyMon"
-Instance1.Name          = "JyMon"
-Instance1.Altitude      = "370060"
-Instance1.Flags         = 0x0
+DefaultInstance         = "JyMonKernel Instance"
+Instance1.Name          = "JyMonKernel Instance"
+Instance1.Altitude      = "370030"
+Instance1.Flags         = 0x0              ; Allow all attachments

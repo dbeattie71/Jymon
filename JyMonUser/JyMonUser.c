@@ -78,10 +78,10 @@ JyMonWorker(
 	_In_ PJYMON_THREAD_CONTEXT Context
 	)
 {
-	PJYMON_NOTIFICATION Notification;
+	PJYMON_NOTIFICATION Notification = NULL;
 	JYMON_REPLY_MESSAGE ReplyMessage; // Reply with header
-	PJYMON_NOTIFICATION_MESSAGE Message;
-	LPOVERLAPPED Overlapped;
+	PJYMON_NOTIFICATION_MESSAGE Message = NULL;
+	LPOVERLAPPED Overlapped = NULL;
 	BOOL Result;
 	DWORD NumberOfBytesTransferred;
 	HRESULT HandleResult;
@@ -108,6 +108,13 @@ JyMonWorker(
 			&CompletionKey,
 			&Overlapped,
 			INFINITE);
+		if (!Result)
+		{
+			HandleResult = HRESULT_FROM_WIN32(GetLastError());
+			printf("JyMon : GetQueuedCompletionStatus failed, HRESULT 0x%X", HandleResult);
+			break;
+		}
+
 		//
 		// To look up members in OVERLAPPPED structure, refer to 
 		// https://msdn.microsoft.com/en-us/library/windows/desktop/ms684342(v=vs.85).aspx
@@ -115,12 +122,6 @@ JyMonWorker(
 		Message = CONTAINING_RECORD(Overlapped,
 			JYMON_NOTIFICATION_MESSAGE,
 			Overlapped);
-		if (!Result)
-		{
-			HandleResult = HRESULT_FROM_WIN32(GetLastError());
-			break;
-		}
-
 		printf("Received message, size %Id\n", Overlapped->InternalHigh);
 
 		Notification = &Message->Notification;
@@ -250,7 +251,10 @@ main(
 		CloseHandle(Port);
 		return 3;
 	}
+
 	printf("JyMon: Port = 0x%p Completion = 0x%p\n", Port, Completion);
+	Context.Port = Port;
+	Context.Completion = Completion;
 
 	//
 	//  Create specified number of threads.
@@ -266,7 +270,7 @@ main(
 				0,
 				&ThreadId);
 
-			if (Threads[i] == NULL)
+			if (NULL == Threads[i])
 			{
 				//
 				//  Couldn't create thread.
@@ -303,6 +307,9 @@ main(
 				}
 			}
 		}
+
+		HandleResult = S_OK;
+		WaitForMultipleObjectsEx(i, Threads, TRUE, INFINITE, FALSE);
 	}
 	__finally
 	{
@@ -315,8 +322,7 @@ main(
 		CloseHandle(Port);
 		CloseHandle(Completion);
 	}
-	HandleResult = S_OK;
-	WaitForMultipleObjectsEx(i, Threads, TRUE, INFINITE, FALSE);
 
+	getchar();
 	return HandleResult;
 }

@@ -13,6 +13,11 @@
 #define PTDBG_TRACE_ROUTINES            0x00000001
 #define PTDBG_TRACE_OPERATION_STATUS    0x00000002
 
+#define ALLOW_GENERAL_DEBUG_PRINT       0x00000001
+#define ALLOW_WARNING_DEBUG_PRINT       0x00000002
+#define ALLOW_NOTIFIY_DEBUG_PRINT       0x00000003
+#define ALLOW_ERROR_DEBUG_PRINT         0x00000004
+#define ALLOW_DEBUG_PRINT               ALLOW_NOTIFIY_DEBUG_PRINT
 const PWSTR JYMON_PORT_NAME = L"\\JyMonPort";
 
 /*
@@ -210,7 +215,8 @@ JyMonPortDisconnect(
 //  operation registration
 //
 
-CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
+CONST FLT_OPERATION_REGISTRATION Callbacks[] = 
+{
 	{ IRP_MJ_CREATE,
 	0,
 	(PFLT_PRE_OPERATION_CALLBACK)JyMonPreCreate,
@@ -219,8 +225,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 	{ IRP_MJ_OPERATION_END }
 };
 
-const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
-
+const FLT_CONTEXT_REGISTRATION ContextRegistration[] = 
+{
 	{ FLT_STREAMHANDLE_CONTEXT,
 	0,
 	NULL,
@@ -228,7 +234,6 @@ const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
 	'chBS' },
 
 	{ FLT_CONTEXT_END }
-
 };
 
 CONST FLT_REGISTRATION FilterRegistration = {
@@ -322,8 +327,10 @@ JyMonInstanceQueryTeardown(
 
 	PAGED_CODE();
 
+#if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_EVENT
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 		"JyMon!JyMonInstanceQueryTeardown: Entered\n");
+#endif
 
 	return STATUS_SUCCESS;
 }
@@ -334,15 +341,15 @@ JyMonInstanceQueryTeardown(
 *************************************************************************/
 
 /*
-* @brief    This is the initialization routine for this miniFilter driver.  This
+* @brief    This is the initialization routine for this miniFilter driver. This
 *           registers with FltMgr and initializes all global data structures.
 *
-* @param    DriverObject - Pointer to driver object created by the system to
+* @param    Pointer to driver object created by the system to
 *           represent this driver.
-* @param    RegistryPath - Unicode string identifying where the parameters for this
+* @param    Unicode string identifying where the parameters for this
 *           driver are located in the registry.
 *
-* @return   Returns STATUS_SUCCESS.
+* @return   Routine can return non success error codes.
 */
 NTSTATUS
 DriverEntry(
@@ -357,8 +364,10 @@ DriverEntry(
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
+#if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_PRINT
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 		"JyMon!DriverEntry: Entered\n");
+#endif
 
 	//
 	//  Default to NonPagedPoolNx for non paged pool allocations where supported.
@@ -373,6 +382,68 @@ DriverEntry(
 		                       &JyMonData.FilterHandle);
 	if (!NT_SUCCESS(Status))
 	{
+		switch (Status)
+		{
+		case STATUS_INSUFFICIENT_RESOURCES:
+			//
+			// FltRegisterFilter encountered a pool allocation failure. 
+			// This is an error code.
+			//
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_DEBUG_PRINT
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry!FltRegisterFilter returned \
+				STATUS_INSUFFICIENT_RESOURCES\n");
+#endif
+			break;
+
+		case STATUS_INVALID_PARAMETER:
+			//
+			// One of the following :
+			//
+			// ? The Version member of the Registration structure was not set to 
+			// FLT_REGISTRATION_VERSION.
+			//
+			// ? One of the non - NULL name - provider routines in the Registration 
+			// structure was set to an invalid value.The GenerateFileNameCallback,
+			// NormalizeNameComponentCallback, and NormalizeNameComponentExCallback 
+			// members of FLT_REGISTRATION point to the name - provider routines.
+			//
+			// STATUS_INVALID_PARAMETER is an error code. 
+			//
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_DEBUG_PRINT
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry!FltRegisterFilter returned \
+				STATUS_INVALID_PARAMETER\n");
+#endif
+			break;
+
+		case STATUS_FLT_NOT_INITIALIZED:
+			//  
+			// The Filter Manager was not initialized when the filter tried to 
+			// register. Make sure that the Filter Manager is loaded as a driver.
+			// This is an error code.
+			//
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_DEBUG_PRINT
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry!FltRegisterFilter returned \
+				STATUS_FLT_NOT_INITIALIZED\n");
+#endif
+			break;
+
+		case STATUS_OBJECT_NAME_NOT_FOUND:
+			//
+			// The filter service key is not found in the registry. 
+			// (registered service without your own inf file, in my case.)
+			// 
+			// The filter instance is not registered.
+			//
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_DEBUG_PRINT
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry!FltRegisterFilter returned \
+				STATUS_OBJECT_NAME_NOT_FOUND\n");
+#endif
+			break;
+		}
 		return Status;
 	}
 
@@ -409,91 +480,39 @@ DriverEntry(
 
 		if (!NT_SUCCESS(Status))
 		{
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!DriverEntry: FltCreateCommunicationPort failed.\n");
 			goto __CLEANUP_FILTERING__;
 		}
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+			"JyMon!DriverEntry: FltCreateCommunicationPort succeeded.\n");
 	}
 
-
-	if (!NT_SUCCESS(Status)) 
+	if (NT_SUCCESS(Status))
 	{
-		switch (Status)
-		{
-		case STATUS_INSUFFICIENT_RESOURCES:
-			//
-			// FltRegisterFilter encountered a pool allocation failure. 
-			// This is an error code.
-			//
-			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
-				"JyMon!DriverEntry!FltRegisterFilter: \
-				STATUS_INSUFFICIENT_RESOURCES\n");
-			break;
-
-		case STATUS_INVALID_PARAMETER:
-			//
-			// One of the following :
-			//
-			// ? The Version member of the Registration structure was not set to 
-			// FLT_REGISTRATION_VERSION.
-			//
-			// ? One of the non - NULL name - provider routines in the Registration 
-			// structure was set to an invalid value.The GenerateFileNameCallback,
-			// NormalizeNameComponentCallback, and NormalizeNameComponentExCallback 
-			// members of FLT_REGISTRATION point to the name - provider routines.
-			//
-			// STATUS_INVALID_PARAMETER is an error code. 
-			//
-			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
-				"JyMon!DriverEntry!FltRegisterFilter: \
-				STATUS_INVALID_PARAMETER\n");
-			break;
-
-		case STATUS_FLT_NOT_INITIALIZED:
-			//  
-			// The Filter Manager was not initialized when the filter tried to 
-			// register. Make sure that the Filter Manager is loaded as a driver.
-			// This is an error code.
-			//
-			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
-				"JyMon!DriverEntry!FltRegisterFilter: \
-				STATUS_FLT_NOT_INITIALIZED");
-			break;
-
-		case STATUS_OBJECT_NAME_NOT_FOUND:
-			//
-			// The filter service key is not found in the registry. 
-			// (registered service without your own inf file, in my case.)
-			// 
-			// The filter instance is not registered.
-			//
-			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, 
-				"JyMon!DriverEntry!FltRegisterFilter: \
-				STATUS_OBJECT_NAME_NOT_FOUND");
-			break;
-		}
-	}
-	else
-	{
-		Status = FltStartFiltering(JyMonData.FilterHandle);
 		DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 			"JyMon!DriverEntry: Trying to start filtering\n");
+		Status = FltStartFiltering(JyMonData.FilterHandle);
 		if (!NT_SUCCESS(Status))
 		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 				"JyMon!DriverEntry: Unable to start filtering.\n");
-			FltUnregisterFilter(JyMonData.FilterHandle);
+			goto __CLEANUP_FILTERING__;
 		}
 		else
 		{
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 				"JyMon!DriverEntry: Start filtering\n");
+			return Status = STATUS_SUCCESS;
 		}
 	}
 
 __CLEANUP_FILTERING__:
 	FltCloseCommunicationPort(JyMonData.ServerPort);
 	FltUnregisterFilter(JyMonData.FilterHandle);
+	JyMonData.FilterHandle = NULL;
 
-	return Status = STATUS_SUCCESS;
+	return Status;
 }
 
 /*
@@ -515,8 +534,10 @@ JyMonUnload(
 
 	PAGED_CODE();
 
+#if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_PRINT
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 		"JyMon!JyMonUnload: Entered\n");
+#endif
 
 	if (JyMonData.ServerPort)
 	{
@@ -589,13 +610,15 @@ JyMonPostCreate(
 	LARGE_INTEGER Offset;
 	ULONG ReplyLength = sizeof(JYMON_REPLY);
 	CONST PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
+	JYMON_REPLY Reply;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(Flags);
 	
+#if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_PRINT
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
-		"JyMon!JyMonPostOperation\n");
-
+		"JyMon!JyMonPostOperation : Entered\n");
+#endif
 	__try
 	{
 		Notification = (PJYMON_NOTIFICATION)FltAllocatePoolAlignedWithTag(FltObjects->Instance,
@@ -604,9 +627,11 @@ JyMonPostCreate(
 			'nacS');
 		if (NULL == Notification)
 		{
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_DEBUG_PRINT
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 				"JyMon!JyMonPostOperation : Couldn't allocate memory, line %i\n", 
 				__LINE__);
+#endif
 			__leave;
 		}
 
@@ -625,13 +650,15 @@ JyMonPostCreate(
 			NULL);
 		if (STATUS_SUCCESS == Status)
 		{
-			;
+			Reply.Reserved = ((PJYMON_REPLY)Notification)->Reserved;
 		}
 		else
 		{
+#if ALLOW_DEBUG_PRINT <= ALLOW_ERROR_NOTIFY_PRINT
 			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 				"JyMon!JyMonPostOperation : Couldn't send message to user-mode, Status 0x%X\n",
-				Status);
+				Status); 
+#endif
 		}
 	}
 	__finally
