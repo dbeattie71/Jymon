@@ -19,12 +19,17 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="JyMonUser.rc">
+    <Inf Include="Jynut.inf">
+      <Filter>Driver Files</Filter>
+    </Inf>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Jynut.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="JyMonUser.c">
+    <ClCompile Include="Jynut.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

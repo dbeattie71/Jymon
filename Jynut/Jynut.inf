@@ -1,5 +1,5 @@
 ;;;
-;;; JyMonKernel
+;;; Jynut
 ;;;
 ;;;
 ;;; Copyright (c) 1999 - 2001, Microsoft Corporation
@@ -11,7 +11,7 @@ Class       = "ActivityMonitor"                         ;This is determined by t
 ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ;This value is determined by the Class
 Provider    = %ProviderString%
 DriverVer   = 06/16/2007,1.0.0.1
-CatalogFile = JyMonKernel.cat
+CatalogFile = Jynut.cat
 
 
 [DestinationDirs]
@@ -73,7 +73,7 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 %DriverName%.sys
 
 [SourceDisksFiles]
-JyMonKernel.sys = 1,,
+Jynut.sys = 1,,
 
 [SourceDisksNames]
 1 = %DiskId1%,,,
@@ -84,13 +84,13 @@ JyMonKernel.sys = 1,,
 
 [Strings]
 ProviderString          = "TODO-Set-Provider"
-ServiceDescription      = "JyMonKernel Mini-Filter Driver"
-ServiceName             = "JyMonKernel"
-DriverName              = "JyMonKernel"
-DiskId1                 = "JyMonKernel Device Installation Disk"
+ServiceDescription      = "Jynut Mini-Filter Driver"
+ServiceName             = "Jynut"
+DriverName              = "Jynut"
+DiskId1                 = "Jynut Device Installation Disk"
 
 ;Instances specific information.
-DefaultInstance         = "JyMonKernel Instance"
-Instance1.Name          = "JyMonKernel Instance"
+DefaultInstance         = "Jynut Instance"
+Instance1.Name          = "Jynut Instance"
 Instance1.Altitude      = "370030"
 Instance1.Flags         = 0x0              ; Allow all attachments
