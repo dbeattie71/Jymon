@@ -123,7 +123,10 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
+<<<<<<< HEAD
       <AdditionalDependencies>%(AdditionalDependencies);fltLib.lib</AdditionalDependencies>
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

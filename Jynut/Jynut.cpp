@@ -4,13 +4,17 @@
 * @env      Kernel mode
 */
 
+<<<<<<< HEAD
 #ifndef __JYNUT_H__
 #define __JYNUT_H__
 
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 #include <fltKernel.h>
 #include <dontuse.h>
 #include <suppress.h>
 
+<<<<<<< HEAD
 #define NOTIFICATION_SIZE_TO_READ_FILE  1024
 #define NOTIFICATION_SIZE_FILE_NAME     1024
 
@@ -27,6 +31,8 @@ typedef struct _JYMON_REPLY
 	ULONG Reserved;
 } JYMON_REPLY, *PJYMON_REPLY;
 
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 #pragma prefast(disable:__WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
 
 #define PTDBG_TRACE_ROUTINES            0x00000001
@@ -37,7 +43,10 @@ typedef struct _JYMON_REPLY
 #define ALLOW_NOTIFIY_DEBUG_PRINT       0x00000003
 #define ALLOW_ERROR_DEBUG_PRINT         0x00000004
 #define ALLOW_DEBUG_PRINT               ALLOW_NOTIFIY_DEBUG_PRINT
+<<<<<<< HEAD
 
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 const PWSTR JYMON_PORT_NAME = L"\\JyMonPort";
 
 /*
@@ -62,6 +71,25 @@ typedef struct _JYMON_STREAMHANDLE_CONTEXT
 
 } JYMON_STREAMHANDLE_CONTEXT, *PJYMON_STREAMHANDLE_CONTEXT;
 
+<<<<<<< HEAD
+=======
+#define NOTIFICATION_SIZE_TO_READ_FILE 1024
+#define NOTIFICATION_SIZE_FILE_NAME 1024
+typedef struct _JYMON_NOTIFICATION
+{
+	HANDLE CurrentProcessId;
+	UCHAR MajorFunction;
+	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
+	UCHAR Extened;
+} JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
+
+typedef struct _JYMON_REPLY
+{
+
+	ULONG Reserved;
+} JYMON_REPLY, *PJYMON_REPLY;
+
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 JYMON_DATA JyMonData;
 
 /*************************************************************************
@@ -534,7 +562,11 @@ JyMonPostCreate(
 	PJYMON_STREAMHANDLE_CONTEXT JyMonContext = NULL;
 	PFLT_FILE_NAME_INFORMATION FileNameInformation;
 	NTSTATUS Status;
+<<<<<<< HEAD
 	JYMON_NOTIFICATION Notification = { 0 };
+=======
+	PJYMON_NOTIFICATION Notification = NULL;
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 	LARGE_INTEGER Offset;
 	ULONG ReplyLength = sizeof(JYMON_REPLY);
 	CONST PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
@@ -557,7 +589,11 @@ JyMonPostCreate(
 	}
 
 	__try
+<<<<<<< HEAD
 	{/*
+=======
+	{
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		Notification = (PJYMON_NOTIFICATION)FltAllocatePoolAlignedWithTag(FltObjects->Instance,
 			NonPagedPool,
 			sizeof(JYMON_NOTIFICATION),
@@ -572,23 +608,43 @@ JyMonPostCreate(
 			__leave;
 		}
 		RtlZeroMemory(Notification, sizeof(JYMON_NOTIFICATION));
+<<<<<<< HEAD
 		*/
+=======
+
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		//
 		//  The buffer can be a raw user buffer. Protect access to it
 		//
 		__try
 		{
+<<<<<<< HEAD
 		//	RtlCopyMemory(Notification->FileName,
 		//		Iopb->TargetFileObject->FileName.Buffer,
 		//		min(Iopb->TargetFileObject->FileName.Length, NOTIFICATION_SIZE_FILE_NAME));
 			Notification.CurrentProcessId = (HANDLE)CurrentProcess;
 			Notification.MajorFunction = Iopb->MajorFunction;
+=======
+			RtlCopyMemory(Notification->FileName,
+				Iopb->TargetFileObject->FileName.Buffer,
+				min(Iopb->TargetFileObject->FileName.Length, NOTIFICATION_SIZE_FILE_NAME));
+			Notification->CurrentProcessId = (HANDLE)CurrentProcess;
+			Notification->MajorFunction = Iopb->MajorFunction;
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!JyMonPostOperation : 1\n");
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
 			//
 			//  Error accessing buffer. Complete i/o with failure
 			//
+<<<<<<< HEAD
+=======
+
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+				"JyMon!JyMonPostOperation : 2\n");
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 			Data->IoStatus.Status = GetExceptionCode();
 			Data->IoStatus.Information = 0;
 
@@ -606,14 +662,24 @@ JyMonPostCreate(
 		Offset.QuadPart = 0;
 		Status = FltSendMessage(JyMonData.FilterHandle,
 			&JyMonData.ClientPort,
+<<<<<<< HEAD
 			&Notification,
 			sizeof(JYMON_NOTIFICATION),
 			&Notification,
+=======
+			Notification,
+			sizeof(JYMON_NOTIFICATION),
+			Notification,
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 			&ReplyLength,
 			NULL);
 		if (STATUS_SUCCESS == Status)
 		{
+<<<<<<< HEAD
 			Reply.Reserved = ((PJYMON_REPLY)&Notification)->Reserved;
+=======
+			Reply.Reserved = ((PJYMON_REPLY)Notification)->Reserved;
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		}
 		else
 		{
@@ -625,11 +691,19 @@ JyMonPostCreate(
 		}
 	}
 	__finally
+<<<<<<< HEAD
 	{/*
 		if (NULL != Notification)
 		{
 			ExFreePoolWithTag(Notification, 'nacS');
 		}*/
+=======
+	{
+		if (NULL != Notification)
+		{
+			ExFreePoolWithTag(Notification, 'nacS');
+		}
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 	}
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
@@ -709,6 +783,10 @@ JyMonPortDisconnect(
 	//  Reset the user-process field.
 	//
 	JyMonData.UserProcess = NULL;
+<<<<<<< HEAD
 }
 
 #endif /* __JYNUT_H__ */
+=======
+}
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
