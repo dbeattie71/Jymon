@@ -19,7 +19,11 @@ typedef struct _JYMON_NOTIFICATION
 	HANDLE CurrentProcessId;
 	UCHAR MajorFunction;
 	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
-	UCHAR Extended;
+	WCHAR ImagePath[NOTIFICATION_SIZE_FILE_NAME];
+	UCHAR ReturnStatus;
+	ULONG Extended;
+	BOOLEAN Mode;
+	BOOLEAN Filtered;
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
 
 typedef struct _JYMON_REPLY
@@ -706,7 +710,6 @@ JyMonPreOperation(
 	HANDLE CurrentProcessId;
 	PFLT_FILE_NAME_INFORMATION FileNameInfo = NULL;
 
-
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 #if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_PRINT
@@ -719,6 +722,7 @@ JyMonPreOperation(
 		return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 	}
 
+	
 	__try
 	{
 		Notification = (PJYMON_NOTIFICATION)FltAllocatePoolAlignedWithTag(FltObjects->Instance,
@@ -742,7 +746,7 @@ JyMonPreOperation(
 		Notification->CurrentProcessId = (HANDLE)CurrentProcessId;
 		Notification->Extended = 1;
 		Notification->MajorFunction = Iopb->MajorFunction;
-
+		
 		//
 		//  The buffer can be a raw user buffer. Protect access to it
 		//
@@ -762,11 +766,7 @@ JyMonPreOperation(
 			__leave;
 		}
 
-		//switch (Iopb->MajorFunction)
-		{
-			//case IRP_MJ_CREATE:
-			//		Iopb->Parameters.Create.Options
-		}
+		
 
 		Offset.QuadPart = 0;
 		Status = FltSendMessage(JyMonData.FilterHandle,
@@ -794,6 +794,63 @@ JyMonPreOperation(
 #endif
 		}
 		*/
+
+		// https://github.com/somma/BobCorn/wiki/%EB%B0%B1%EC%97%85-%EC%86%94%EB%A3%A8%EC%85%98-POC
+		Notification->Filtered = TRUE;
+		switch (Iopb->MajorFunction)
+		{
+			case IRP_MJ_CREATE:
+			{
+				// Overwrite
+				if (Iopb->Parameters.Create.Options >> 24 & FILE_OVERWRITE)
+				{
+				
+				}
+				// Delete
+				if (Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)
+				{
+
+				}
+			}
+			break;
+			
+			case IRP_MJ_SET_INFORMATION:
+			{
+				// Overwrite
+				if (FileRenameInformation == Iopb->Parameters.SetFileInformation.FileInformationClass &&
+					TRUE == ((PFILE_RENAME_INFORMATION)Iopb->Parameters.SetFileInformation.InfoBuffer)->ReplaceIfExists)
+				{
+				
+				}
+				// Delete
+				if (FileDispositionInformation == Iopb->Parameters.SetFileInformation.FileInformationClass &&
+					TRUE == ((PFILE_DISPOSITION_INFORMATION)Iopb->Parameters.SetFileInformation.InfoBuffer)->DeleteFile)
+				{
+				
+				}
+			}
+			break;
+
+			// Edit
+			case IRP_MJ_WRITE:
+			{
+				
+			}
+			break;
+
+			case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
+			{
+				// Edit
+				if (Iopb->Parameters.AcquireForSectionSynchronization.PageProtection & PAGE_READWRITE)
+				{
+				
+				}
+			}
+			break;
+
+			default:
+			break;
+		}
 	}
 	__finally
 	{
@@ -915,5 +972,7 @@ JyMonPortDisconnect(
 	//
 	JyMonData.UserProcess = NULL;
 }
+
+
 
 #endif /* __JYNUT_H__ */

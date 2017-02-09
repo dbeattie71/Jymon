@@ -28,6 +28,7 @@ typedef struct _JYMON_NOTIFICATION
 	HANDLE CurrentProcessId;
 	UCHAR MajorFunction;
 	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
+	ULONG Extended;
 	UCHAR Extended;
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
 #pragma pop
