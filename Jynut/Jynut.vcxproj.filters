@@ -19,9 +19,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="Jynut.inf">
-      <Filter>Driver Files</Filter>
-    </Inf>
+    <ClCompile Include="Jynut.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Jynut.rc">
@@ -29,8 +29,8 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Jynut.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <Inf Include="Jynut.inf">
+      <Filter>Driver Files</Filter>
+    </Inf>
   </ItemGroup>
 </Project>
