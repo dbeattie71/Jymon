@@ -79,11 +79,12 @@
     <DriverType>WDM</DriverType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'" Label="Configuration">
-    <TargetVersion>Windows10</TargetVersion>
+    <TargetVersion>Windows7</TargetVersion>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
     <ConfigurationType>Driver</ConfigurationType>
     <DriverType>WDM</DriverType>
+    <DriverTargetPlatform>Desktop</DriverTargetPlatform>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
@@ -144,6 +145,10 @@
     </Link>
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
+<<<<<<< HEAD:Jynut/Jynut.vcxproj
+      <AdditionalIncludeDirectories>$(MSBuildStartupDirectory)\Inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278:Jynut/Jynut.vcxproj
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

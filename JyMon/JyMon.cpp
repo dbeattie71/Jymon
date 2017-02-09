@@ -5,8 +5,14 @@
 #include <dontuse.h>
 #include <share.h>
 #include <assert.h>
+<<<<<<< HEAD
+
+
+
+=======
 
 #define JYMON_READ_BUFFER_SIZE            1024
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 #define JYMON_DEFAULT_REQUEST_COUNT       5
 #define JYMON_DEFAULT_THREAD_COUNT        2
 #define JYMON_MAX_THREAD_COUNT            64
@@ -18,9 +24,22 @@ typedef struct _JYMON_THREAD_CONTEXT
 	HANDLE Port;
 	HANDLE Completion;
 } JYMON_THREAD_CONTEXT, *PJYMON_THREAD_CONTEXT;
+<<<<<<< HEAD
+
+#define NOTIFICATION_SIZE_TO_READ_FILE  1024
+#define NOTIFICATION_SIZE_FILE_NAME     1024
+
+typedef struct _JYMON_NOTIFICATION
+{
+	HANDLE CurrentProcessId;
+	UCHAR MajorFunction;
+//	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
+	UCHAR Extened;
+=======
 typedef struct _JYMON_NOTIFICATION
 {
 	UCHAR MajorFunction;
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
 
 typedef struct _JYMON_REPLY
@@ -85,6 +104,10 @@ JyMonWorker(
 	BOOL Result;
 	DWORD NumberOfBytesTransferred;
 	HRESULT HandleResult;
+<<<<<<< HEAD
+	DWORD WindowsApiError;
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 	ULONG_PTR CompletionKey;
 
 #pragma warning(push)
@@ -103,6 +126,24 @@ JyMonWorker(
 		//
 		// Poll for messages from the filter component to scan.
 		//
+<<<<<<< HEAD
+		if (FALSE == GetQueuedCompletionStatus(Context->Completion,
+			&NumberOfBytesTransferred,
+			&CompletionKey,
+			&Overlapped,
+			INFINITE))
+		{
+			if (NULL != Overlapped)
+			{
+				WindowsApiError = GetLastError();
+				HandleResult = HRESULT_FROM_WIN32(GetLastError());
+				if (64 != WindowsApiError)
+				{
+					printf("JyMon : GetQueuedCompletionStatus failed, error 0x%X\n", WindowsApiError);
+					break;
+				}
+			}
+=======
 		Result = GetQueuedCompletionStatus(Context->Completion,
 			&NumberOfBytesTransferred,
 			&CompletionKey,
@@ -113,6 +154,7 @@ JyMonWorker(
 			HandleResult = HRESULT_FROM_WIN32(GetLastError());
 			printf("JyMon : GetQueuedCompletionStatus failed, HRESULT 0x%X", HandleResult);
 			break;
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		}
 
 		//
@@ -126,6 +168,11 @@ JyMonWorker(
 
 		Notification = &Message->Notification;
 		printf("MajorFunction : %i\n", Notification->MajorFunction);
+<<<<<<< HEAD
+		printf("CurrentProcessId : %i\n", Notification->CurrentProcessId);
+	//	printf("Contents : %ws\n", Notification->FileName);
+=======
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 
 		ReplyMessage.ReplyHeader.Status = 0;
 		ReplyMessage.ReplyHeader.MessageId = Message->MessageHeader.MessageId;
@@ -147,6 +194,7 @@ JyMonWorker(
 			printf("JYMON: Error replying message. Error = 0x%X\n", HandleResult);
 			break;
 		}
+<<<<<<< HEAD
 
 		RtlZeroMemory(&Message->Overlapped, sizeof(OVERLAPPED));
 		HandleResult = FilterGetMessage(Context->Port,
@@ -154,6 +202,15 @@ JyMonWorker(
 			FIELD_OFFSET(JYMON_NOTIFICATION_MESSAGE, Overlapped),
 			&Message->Overlapped);
 
+=======
+
+		RtlZeroMemory(&Message->Overlapped, sizeof(OVERLAPPED));
+		HandleResult = FilterGetMessage(Context->Port,
+			&Message->MessageHeader,
+			FIELD_OFFSET(JYMON_NOTIFICATION_MESSAGE, Overlapped),
+			&Message->Overlapped);
+
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 		if (HRESULT_FROM_WIN32(ERROR_IO_PENDING) != HandleResult)
 		{
 			break;
@@ -251,11 +308,19 @@ main(
 		CloseHandle(Port);
 		return 3;
 	}
+<<<<<<< HEAD
 
 	printf("JyMon: Port = 0x%p Completion = 0x%p\n", Port, Completion);
 	Context.Port = Port;
 	Context.Completion = Completion;
 
+=======
+
+	printf("JyMon: Port = 0x%p Completion = 0x%p\n", Port, Completion);
+	Context.Port = Port;
+	Context.Completion = Completion;
+
+>>>>>>> 05348893581c66280c6f4c660e0194f419054278
 	//
 	//  Create specified number of threads.
 	//
