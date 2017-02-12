@@ -13,18 +13,23 @@
 
 #define NOTIFICATION_SIZE_TO_READ_FILE  1024
 #define NOTIFICATION_SIZE_FILE_NAME     260
+#define NOTIFICATION_SIZE_IMAGE         260
+#define NOTIFICATION_SIZE_VOLUME        4
 
+#pragma pack(8)
 typedef struct _JYMON_NOTIFICATION
 {
 	HANDLE CurrentProcessId;
 	UCHAR MajorFunction;
+	WCHAR Volume[NOTIFICATION_SIZE_VOLUME];
 	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
-	WCHAR ImagePath[NOTIFICATION_SIZE_FILE_NAME];
+	CHAR ImagePath[NOTIFICATION_SIZE_IMAGE];
 	UCHAR ReturnStatus;
 	ULONG Extended;
 	BOOLEAN Mode;
 	BOOLEAN Filtered;
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
+#pragma pop
 
 typedef struct _JYMON_REPLY
 {
@@ -43,6 +48,7 @@ typedef struct _JYMON_REPLY
 #define ALLOW_DEBUG_PRINT               ALLOW_NOTIFIY_DEBUG_PRINT
 
 const PWSTR JYMON_PORT_NAME = L"\\JyMonPort";
+ULONG ProcessNameOffset = 0;
 
 /*
 * @brief    Structure that contains all the global data structures
@@ -59,9 +65,7 @@ typedef struct _JYMON_DATA
 
 typedef struct _JYMON_STREAMHANDLE_CONTEXT
 {
-
 	BOOLEAN RescanRequired;
-
 } JYMON_STREAMHANDLE_CONTEXT, *PJYMON_STREAMHANDLE_CONTEXT;
 
 JYMON_DATA JyMonData;
@@ -128,7 +132,7 @@ JyMonPortDisconnect(
 	_In_opt_ PVOID ConnectionCookie
 	);
 
-}
+EXTERN_C_END
 
 //
 //  Assign text sections for each routine.
@@ -383,6 +387,17 @@ CONST FLT_REGISTRATION FilterRegistration = {
 };
 
 
+typedef NTSTATUS(*QUERY_INFO_PROCESS) (
+	__in HANDLE ProcessHandle,
+	__in PROCESSINFOCLASS ProcessInformationClass,
+	__out_bcount(ProcessInformationLength) PVOID ProcessInformation,
+	__in ULONG ProcessInformationLength,
+	__out_opt PULONG ReturnLength
+	);
+
+QUERY_INFO_PROCESS ZwQueryInformationProcess;
+
+
 /*
 * @brief    This routine is called by the filter manager when a new instance is created.
 *           We specified in the registry that we only want for manual attachments,
@@ -491,6 +506,27 @@ DriverEntry(
 #if ALLOW_DEBUG_PRINT <= ALLOW_GENERAL_DEBUG_PRINT
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
 		"JyMon!DriverEntry: Entered\n");
+#endif
+
+	//
+	// DriverEntry() is called by the process named "System".
+	//
+	PEPROCESS Curprocess = PsGetCurrentProcess();
+	LONG i;
+
+	// Scan for 12KB, hoping the KPEB never grows that big! 
+	// PAGE_SIZE : 4KB  
+	for (i = 0; i < 3 * PAGE_SIZE; i++)
+	{
+		if (!strncmp("System", (PCHAR)Curprocess + i, strlen("System")))
+		{
+			ProcessNameOffset = i;
+		}
+	}
+#if ALLOW_DEBUG_PRINT <= ALLOW_NOTIFIY_DEBUG_PRINT
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0,
+		"JyMon!DriverEntry: ProcessNameOffset 0x%03X\n",
+		ProcessNameOffset);
 #endif
 
 	//
@@ -639,6 +675,7 @@ __CLEANUP_FILTERING__:
 	return Status;
 }
 
+
 /*
 * @brief    This is the unload routine for this miniFilter driver. This is called
 *           when the minifilter is about to be unloaded. We can fail this unload
@@ -699,16 +736,18 @@ JyMonPreOperation(
 	)
 {
 	PJYMON_STREAMHANDLE_CONTEXT JyMonContext = NULL;
-	PFLT_FILE_NAME_INFORMATION FileNameInformation;
+	PFLT_FILE_NAME_INFORMATION FileNameInformation = NULL;
 	NTSTATUS Status;
 	PJYMON_NOTIFICATION Notification = NULL;
 	LARGE_INTEGER Offset;
 	ULONG ReplyLength = sizeof(JYMON_REPLY);
 	CONST PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
 	JYMON_REPLY Reply;
-	PEPROCESS ObjectCurrentProcess = NULL;
-	HANDLE CurrentProcessId;
-	PFLT_FILE_NAME_INFORMATION FileNameInfo = NULL;
+	ULONG i;
+	UNICODE_STRING ProcessImagePath;
+	PEPROCESS CurrentProcess = PsGetCurrentProcess();
+	HANDLE CurrentProcessId = PsGetCurrentProcessId();
+	HANDLE HandleProcess = NULL;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -722,7 +761,6 @@ JyMonPreOperation(
 		return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 	}
 
-	
 	__try
 	{
 		Notification = (PJYMON_NOTIFICATION)FltAllocatePoolAlignedWithTag(FltObjects->Instance,
@@ -739,22 +777,39 @@ JyMonPreOperation(
 			__leave;
 		}
 		RtlZeroMemory(Notification, sizeof(JYMON_NOTIFICATION));
-
-		ObjectCurrentProcess = IoThreadToProcess(Data->Thread);
-		CurrentProcessId = PsGetProcessId(ObjectCurrentProcess);
-
+	
 		Notification->CurrentProcessId = (HANDLE)CurrentProcessId;
 		Notification->Extended = 1;
 		Notification->MajorFunction = Iopb->MajorFunction;
+		
+		Status = FltGetFileNameInformation(Data,
+			FLT_FILE_NAME_NORMALIZED |
+			FLT_FILE_NAME_QUERY_DEFAULT,
+			&FileNameInformation);
+
 		
 		//
 		//  The buffer can be a raw user buffer. Protect access to it
 		//
 		__try
 		{
+			RtlCopyMemory(Notification->Volume,
+				FileNameInformation->Volume.Buffer,
+				min(FileNameInformation->Volume.Length, NOTIFICATION_SIZE_VOLUME - 1));
 			RtlCopyMemory(Notification->FileName,
-				Iopb->TargetFileObject->FileName.Buffer,
-				min(Iopb->TargetFileObject->FileName.Length, NOTIFICATION_SIZE_FILE_NAME - 1));		
+				FileNameInformation->Name.Buffer,
+				min(FileNameInformation->Name.Length, NOTIFICATION_SIZE_FILE_NAME - 1));
+			
+			if (0 != ProcessNameOffset)
+			{
+				RtlCopyMemory(Notification->ImagePath, 
+					(PCHAR)CurrentProcess + ProcessNameOffset, 
+					min(strlen((PCHAR)CurrentProcess + ProcessNameOffset), NOTIFICATION_SIZE_IMAGE - 1));
+			}
+			else
+			{
+				strcpy(Notification->ImagePath, "???");
+			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
@@ -767,6 +822,7 @@ JyMonPreOperation(
 		}
 
 		
+	
 
 		Offset.QuadPart = 0;
 		Status = FltSendMessage(JyMonData.FilterHandle,
@@ -794,7 +850,7 @@ JyMonPreOperation(
 #endif
 		}
 		*/
-
+		
 		// https://github.com/somma/BobCorn/wiki/%EB%B0%B1%EC%97%85-%EC%86%94%EB%A3%A8%EC%85%98-POC
 		Notification->Filtered = TRUE;
 		switch (Iopb->MajorFunction)

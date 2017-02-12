@@ -5,6 +5,7 @@
 #include <dontuse.h>
 #include <share.h>
 #include <assert.h>
+#include <chrono>
 
 #define JYMON_READ_BUFFER_SIZE            1024
 #define JYMON_DEFAULT_REQUEST_COUNT       5
@@ -12,6 +13,8 @@
 #define JYMON_MAX_THREAD_COUNT            64
 
 const PWSTR JyMonPortName = L"JyMonPort";
+ULONG No = 0;
+clock_t BeginTime;
 
 typedef struct _JYMON_THREAD_CONTEXT
 {
@@ -21,15 +24,21 @@ typedef struct _JYMON_THREAD_CONTEXT
 
 #define NOTIFICATION_SIZE_TO_READ_FILE  1024
 #define NOTIFICATION_SIZE_FILE_NAME     260
+#define NOTIFICATION_SIZE_IMAGE         260
+#define NOTIFICATION_SIZE_VOLUME        4
 
 #pragma pack(8)
 typedef struct _JYMON_NOTIFICATION
 {
 	HANDLE CurrentProcessId;
 	UCHAR MajorFunction;
+	WCHAR Volume[NOTIFICATION_SIZE_VOLUME];
 	WCHAR FileName[NOTIFICATION_SIZE_FILE_NAME];
+	CHAR ImagePath[NOTIFICATION_SIZE_IMAGE];
+	UCHAR ReturnStatus;
 	ULONG Extended;
-	UCHAR Extended;
+	BOOLEAN Mode;
+	BOOLEAN Filtered;
 } JYMON_NOTIFICATION, *PJYMON_NOTIFICATION;
 #pragma pop
 
@@ -68,6 +77,67 @@ typedef struct _JYMON_REPLY_MESSAGE
 } JYMON_REPLY_MESSAGE, *PJYMON_REPLY_MESSAGE;
 
 
+#define STATUS_SUCCESS               ((NTSTATUS)0x00000000L)
+#define STATUS_INFO_LENGTH_MISMATCH  ((NTSTATUS)0xC0000004L)
+
+typedef enum _SYSTEM_INFORMATION_CLASS {
+	SystemProcessInformation = 5
+} SYSTEM_INFORMATION_CLASS;
+
+typedef struct _UNICODE_STRING {
+	USHORT Length;
+	USHORT MaximumLength;
+	PWSTR  Buffer;
+} UNICODE_STRING;
+
+typedef LONG KPRIORITY; // Thread priority
+
+typedef struct _SYSTEM_PROCESS_INFORMATION_DETAILD {
+	ULONG NextEntryOffset;
+	ULONG NumberOfThreads;
+	LARGE_INTEGER SpareLi1;
+	LARGE_INTEGER SpareLi2;
+	LARGE_INTEGER SpareLi3;
+	LARGE_INTEGER CreateTime;
+	LARGE_INTEGER UserTime;
+	LARGE_INTEGER KernelTime;
+	UNICODE_STRING ImageName;
+	KPRIORITY BasePriority;
+	HANDLE UniqueProcessId;
+	ULONG InheritedFromUniqueProcessId;
+	ULONG HandleCount;
+	BYTE Reserved4[4];
+	PVOID Reserved5[11];
+	SIZE_T PeakPagefileUsage;
+	SIZE_T PrivatePageCount;
+	LARGE_INTEGER Reserved6[6];
+} SYSTEM_PROCESS_INFORMATION_DETAILD, *PSYSTEM_PROCESS_INFORMATION_DETAILED;
+
+typedef NTSTATUS(WINAPI *PFN_NT_QUERY_SYSTEM_INFORMATION)(
+	IN       SYSTEM_INFORMATION_CLASS SystemInformationClass,
+	IN OUT   PVOID SystemInformation,
+	IN       ULONG SystemInformationLength,
+	OUT OPTIONAL  PULONG ReturnLength
+	);
+
+typedef class _TIMER
+{
+public:
+	_TIMER() : beg_(clock_::now()) {}
+	void reset() { beg_ = clock_::now(); }
+	double elapsed() const {
+		return std::chrono::duration_cast<second_>
+			(clock_::now() - beg_).count();
+	}
+
+private:
+	typedef std::chrono::high_resolution_clock clock_;
+	typedef std::chrono::duration<double, std::ratio<1> > second_;
+	std::chrono::time_point<clock_> beg_;
+}TIMER, *PTIMER;
+
+TIMER Timer;
+
 VOID
 Usage(
 	VOID
@@ -77,6 +147,71 @@ Usage(
 	printf("Usage: jymonuser [requests per thread] [number of threads(1-64)]\n");
 }
 
+//
+// @deprecated
+// Get image path in user layer.
+//
+WCHAR* GetProcessNameWithPid(HANDLE ProcessId)
+{
+	static WCHAR ProcessName[NOTIFICATION_SIZE_FILE_NAME];
+	SIZE_T BufferSize = 102400;
+	PSYSTEM_PROCESS_INFORMATION_DETAILED ProcessInformation =
+		(PSYSTEM_PROCESS_INFORMATION_DETAILED)malloc(BufferSize);
+	ULONG ReturnLength;
+	PFN_NT_QUERY_SYSTEM_INFORMATION pfnNtQuerySystemInformation = (PFN_NT_QUERY_SYSTEM_INFORMATION)
+		GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")), "NtQuerySystemInformation");
+	NTSTATUS Status;
+	
+	RtlZeroMemory(ProcessName, sizeof(ProcessName) / sizeof(WCHAR));
+	while (TRUE) 
+	{
+		Status = pfnNtQuerySystemInformation(SystemProcessInformation,
+			(PVOID)ProcessInformation,
+			BufferSize, 
+			&ReturnLength);
+		if (STATUS_SUCCESS == Status)
+		{
+			for (;;
+			ProcessInformation = (PSYSTEM_PROCESS_INFORMATION_DETAILED)
+				((PBYTE)ProcessInformation + ProcessInformation->NextEntryOffset)) 
+			{
+				if (ProcessId == ProcessInformation->UniqueProcessId)
+				{
+					RtlCopyMemory(ProcessName,
+						((ProcessInformation->ImageName.Length && ProcessInformation->ImageName.Buffer)
+							? ProcessInformation->ImageName.Buffer : L""),
+						min(ProcessInformation->ImageName.Length, NOTIFICATION_SIZE_FILE_NAME));
+					goto __CLEANUP_PSYSTEM_PROCESS_INFORMATION_DETAILED__;
+				}
+				if (0 == ProcessInformation->NextEntryOffset)
+				{
+					*ProcessName = NULL;
+				}
+			}
+		}
+		else if (STATUS_INFO_LENGTH_MISMATCH != Status ||
+			STATUS_ACCESS_VIOLATION != Status)
+		{
+			ProcessInformation = NULL;
+			printf("ERROR 0x%X\n", Status);
+			*ProcessName = NULL;
+		}
+
+		BufferSize *= 2;
+		ProcessInformation = (PSYSTEM_PROCESS_INFORMATION_DETAILED)
+			realloc((PVOID)ProcessInformation, BufferSize);
+	}
+
+__CLEANUP_PSYSTEM_PROCESS_INFORMATION_DETAILED__:
+	/*
+	if (NULL != ProcessInformation)
+	{
+		free(ProcessInformation);
+	}
+	*/
+
+	return ProcessName;
+}
 /*
 * @brief    This is a worker thread
 * @param    This thread context has a pointer to the port handle we use to send/receive messages,
@@ -96,6 +231,7 @@ JyMonWorker(
 	DWORD NumberOfBytesTransferred;
 	HRESULT HandleResult;
 	ULONG_PTR CompletionKey;
+	WCHAR* ImagePath;
 
 #pragma warning(push)
 #pragma warning(disable:4127) // conditional expression is constant
@@ -136,15 +272,22 @@ JyMonWorker(
 		Message = CONTAINING_RECORD(Overlapped,
 			JYMON_NOTIFICATION_MESSAGE,
 			Overlapped);
-		printf("Received message, size %Id\n", Overlapped->InternalHigh);
-
 		Notification = &Message->Notification;
+
+		printf("No : %i\n", ++No);
+		printf("Relative TIme : %lf\n", Timer.elapsed());
 		printf("CurrentProcessId : %i\n", (ULONG)Notification->CurrentProcessId);
 		printf("MajorFunction : %i\n", Notification->MajorFunction);
 		printf("Extended : %i\n", Notification->Extended);
-		printf("Contents : %ws\n", Notification->FileName);
+		printf("Volume : %ws\n", Notification->Volume);
+		printf("FileName : %ws\n", Notification->FileName);
 
+	//	ImagePath = GetProcessNameWithPid(Notification->CurrentProcessId);
+		printf("Extened : %i\n", Notification->Extended);
+		printf("Image Path : %s\n", Notification->ImagePath);
+		printf("___________________________________________\n\n\n");
 
+		
 		//
 		// Reserved codes for reply messages to filter.
 		//
@@ -202,6 +345,9 @@ JyMonWorker(
 	return HandleResult;
 }
 
+#define STATUS_SUCCESS               ((NTSTATUS)0x00000000L)
+#define STATUS_INFO_LENGTH_MISMATCH  ((NTSTATUS)0xC0000004L)
+
 int _cdecl
 main(_In_ int argc,
 	char* argv[])
@@ -217,7 +363,7 @@ main(_In_ int argc,
 	DWORD ThreadId;
 	HRESULT HandleResult;
 	DWORD i, j;
-
+	
 	if (argc > 1)
 	{
 		RequestCount = atoi(argv[1]);
@@ -272,6 +418,8 @@ main(_In_ int argc,
 	printf("JyMon: Port = 0x%p Completion = 0x%p\n", Port, Completion);
 	Context.Port = Port;
 	Context.Completion = Completion;
+
+	BeginTime = clock();
 
 	//
 	//  Create specified number of threads.
